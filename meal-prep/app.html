@@ -133,6 +133,7 @@ header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:1
 .isrc{font-size:.76rem;color:var(--muted);overflow-wrap:anywhere}
 .qty{display:flex;align-items:center;gap:2px}
 .qty button{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--surface);font-weight:800;line-height:1}
+.storesel{min-height:0;width:auto;padding:1px 6px;font-size:.76rem;border-radius:999px;margin-right:2px;color:var(--accent);font-weight:700;background:var(--accent-soft);border-color:transparent}
 .qty .q{min-width:68px;text-align:center;font-size:.9rem;font-weight:700;font-variant-numeric:tabular-nums}
 .star{color:var(--star)}
 
@@ -351,23 +352,26 @@ const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov
 const WHOLE_UNITS = new Set(["each","can","jar","bag","pkg","box","head","bunch","carton","tub","pint","loaf","dozen","gal","bottle","roll","ct"]);
 
 const STARTER_STAPLES = [
- ["Milk",3,"gal","D",1,0],["Eggs",5,"dozen","D",1,0],["Plain Greek yogurt (32 oz)",2,"tub","D",1,1],["String cheese",2,"pkg","D",0,1],
- ["Cottage cheese",2,"tub","D",0,1],["Russet potatoes (10 lb)",1,"bag","P",1,0],["Bananas",3,"bunch","P",1,1],["Apples (5 lb)",1,"bag","P",0,1],
- ["Baby carrots",2,"bag","P",0,1],["Deli turkey",2,"lb","M",0,1],["Beef sticks",1,"pkg","S",0,1],["Peanut butter",1,"jar","G",0,1],
- ["Hummus",1,"tub","S",0,1],["Whole wheat bread",3,"loaf","B",1,0],["Tortillas",2,"pkg","B",0,0],["Frozen berries",1,"bag","F",0,1],
- ["White rice",1,"bag","G",0,0],["Paper towels",1,"pkg","H",0,0]
+ ["Milk",3,"gal","D",1,0,"costco"],["Eggs",5,"dozen","D",1,0,"costco"],["Plain Greek yogurt (32 oz)",2,"tub","D",1,1,"costco"],["String cheese",2,"pkg","D",0,1,"costco"],
+ ["Cottage cheese",2,"tub","D",0,1,"costco"],["Russet potatoes (10 lb)",1,"bag","P",1,0,"costco"],["Bananas",3,"bunch","P",1,1,"costco"],["Apples (5 lb)",1,"bag","P",0,1,"walmart"],
+ ["Baby carrots",2,"bag","P",0,1,"walmart"],["Deli turkey",2,"lb","M",0,1,"walmart"],["Beef sticks",1,"pkg","S",0,1,"costco"],["Peanut butter",1,"jar","G",0,1,"walmart"],
+ ["Hummus",1,"tub","S",0,1,"walmart"],["Whole wheat bread",3,"loaf","B",1,0,"walmart"],["Tortillas",2,"pkg","B",0,0,"walmart"],["Frozen berries",1,"bag","F",0,1,"costco"],
+ ["White rice",1,"bag","G",0,0,"walmart"],["Paper towels",1,"pkg","H",0,0,"costco"]
 ];
 
-const DEF_SETTINGS = {servings:8,start:0,breakfasts:false,maxIng:6,maxActive:30,mix:{potato:4,rice:1,pasta:1,grain:1},avoid:[],fav:[],hidden:[]};
+const DEF_SETTINGS = {servings:8,start:0,breakfasts:false,maxIng:6,maxActive:30,mix:{potato:4,rice:1,pasta:1,grain:1},avoid:[],fav:[],hidden:[],
+  stores:[{id:"walmart",name:"Walmart"},{id:"costco",name:"Costco"}],defStore:"walmart",itemStore:{}};
 
 /* ===================== State ===================== */
 const S = {settings:clone(DEF_SETTINGS),plan:null,trip:emptyTrip(),staples:{},recipes:{},prep:{}};
 let ready = {settings:false,plan:false,trip:false,staples:false,recipes:false};
 let tab = "week";
-let ui = {filter:"all",q:"",armed:null,editStaple:null};
+let ui = {filter:"all",q:"",armed:null,editStaple:null,store:"all"};
+try{ const v=localStorage.getItem("family-kitchen.store"); if(v) ui.store=v; }catch(e){}
+function setStoreView(id){ ui.store=id; try{ localStorage.setItem("family-kitchen.store",id); }catch(e){} }
 
 function clone(o){return o==null?o:JSON.parse(JSON.stringify(o))}
-function emptyTrip(){return {need:{},have:{},checked:{},qty:{},extras:[],keep:{}}}
+function emptyTrip(){return {need:{},have:{},checked:{},qty:{},extras:[],keep:{},bought:{}}}
 function uid(){return Math.random().toString(36).slice(2,10)}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function norm(s){return String(s).toLowerCase().replace(/\(.*?\)/g,"").replace(/\s+/g," ").trim()}
@@ -478,6 +482,17 @@ function eligible(r,meal){
 }
 function scale(){ return (S.settings.servings||8)/4; }
 
+/* ===================== Stores ===================== */
+function stores(){ return S.settings.stores||[]; }
+function validStore(id){ return id && stores().some(s=>s.id===id) ? id : null; }
+function storeName(id){ const s=stores().find(x=>x.id===id); return s?s.name:"Any store"; }
+function defaultStore(){ return validStore(S.settings.defStore) || (stores()[0]&&stores()[0].id) || ""; }
+function storeOf(name,stapleId,extra){
+  return validStore(stapleId&&S.staples[stapleId]&&S.staples[stapleId].store) || validStore(extra&&extra.store)
+    || validStore((S.settings.itemStore||{})[norm(name)]) || defaultStore();
+}
+function storeSelect(attrs,cur){ return `<select ${attrs}>${stores().map(s=>`<option value="${esc(s.id)}" ${s.id===cur?"selected":""}>${esc(s.name)}</option>`).join("")}</select>`; }
+
 /* ===================== Dates ===================== */
 function weekStart(d=new Date(), start=S.settings.start){ const x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); const diff=(x.getDay()-start+7)%7; x.setDate(x.getDate()-diff); return x; }
 function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
@@ -517,6 +532,7 @@ function makePlan(keep){
   bfast.forEach((b,i)=>{ if(b.lock||b.skip) return; const r=pickFrom(bpool,bused); bfast[i]={r:r?r.id:null,lock:false,skip:false}; if(r){ bused.add(r.id); if(bused.size>=bpool.length) bused.clear(); }});
   S.plan={weekOf:iso(ws),dinner:dinners,breakfast:bfast};
   S.prep={};
+  if(!keep && S.trip.bought && Object.keys(S.trip.bought).length){ S.trip.bought={}; save.trip(); }
   save.plan(); save.prep();
 }
 function swap(meal,i){
@@ -578,16 +594,20 @@ function buildList(){
     add(s.name,s.qty,s.unit,s.sec,"usually "+fmtQty(s.qty)+unitLabel(s.unit,s.qty),{stapleId:id,snack:!!s.snack});
   });
   (S.trip.extras||[]).forEach(x=>add(x.name,x.qty,x.unit,x.sec,"added",{extraId:x.id}));
-  const list=[...rows.values()].map(r=>{
+  const bought=S.trip.bought||{};
+  const all=[...rows.values()].map(r=>{
     const q = S.trip.qty[r.key]!=null ? S.trip.qty[r.key] : niceQty(r.qty,r.unit);
-    return {...r,qty:q,done:!!S.trip.checked[r.key]};
+    const ex = r.extraId ? (S.trip.extras||[]).find(x=>x.id===r.extraId) : null;
+    return {...r,qty:q,done:!!S.trip.checked[r.key],store:storeOf(r.name,r.stapleId,ex)};
   });
-  return {list,basics:[...basics]};
+  const list=all.filter(r=>!bought[r.key]);
+  return {list,basics:[...basics],boughtCount:all.length-list.length};
 }
-function finishTrip(){
+function finishTrip(store){
   const {list}=buildList();
   let remembered=0, added=0;
-  list.filter(x=>x.done).forEach(x=>{
+  const done=list.filter(x=>x.done && (store==="all"||x.store===store));
+  done.forEach(x=>{
     if(x.stapleId && S.staples[x.stapleId]){
       const s=clone(S.staples[x.stapleId]);
       s.hist=[...(s.hist||[]),x.qty].slice(-6);
@@ -595,12 +615,16 @@ function finishTrip(){
       if(med!==s.qty){ s.qty=med; remembered++; }
       s.last=iso(new Date()); save.staple(x.stapleId,s);
     } else if(x.extraId && S.trip.keep[x.extraId]){
-      const id=uid(); save.staple(id,{name:x.name,qty:x.qty,unit:x.unit,sec:x.sec,every:false,snack:false,hist:[x.qty],last:iso(new Date())}); added++;
+      const id=uid(); save.staple(id,{name:x.name,qty:x.qty,unit:x.unit,sec:x.sec,store:x.store,every:false,snack:false,hist:[x.qty],last:iso(new Date())}); added++;
     }
   });
-  const leftover=(S.trip.extras||[]).filter(x=>!S.trip.checked[keyOf(x.name,x.unit)]);
-  S.trip={...emptyTrip(),extras:leftover}; save.trip();
-  toast("Trip saved."+(remembered?" Updated "+remembered+" usual amount"+(remembered>1?"s":"")+".":"")+(added?" Added "+added+" new staple"+(added>1?"s":"")+".":""));
+  const t=clone(S.trip); t.bought=t.bought||{};
+  const doneExtras=new Set();
+  done.forEach(x=>{ t.bought[x.key]=1; delete t.checked[x.key]; delete t.qty[x.key];
+    if(x.stapleId){ delete t.need[x.stapleId]; } if(x.extraId){ doneExtras.add(x.extraId); delete t.keep[x.extraId]; } });
+  t.extras=(t.extras||[]).filter(x=>!doneExtras.has(x.id));
+  S.trip=t; save.trip();
+  toast((store==="all"?"Trip":storeName(store)+" trip")+" saved."+(remembered?" Updated "+remembered+" usual amount"+(remembered>1?"s":"")+".":"")+(added?" Added "+added+" new staple"+(added>1?"s":"")+".":""));
 }
 
 /* ===================== Parsing typed lines like "2 gal milk" ===================== */
@@ -663,12 +687,12 @@ function render(){
   const titles={week:"This week",shop:"Grocery list",recipes:"Recipes",home:"Household"};
   document.getElementById("hdr-title").textContent=titles[tab];
   document.getElementById("hdr-eyebrow").textContent=`Cooking for ${S.settings.servings} · high protein · potato first`;
-  const {list}=buildList(); const left=list.filter(x=>!x.done).length;
+  const {list,boughtCount}=buildList(); const left=list.filter(x=>!x.done).length;
   const badge=document.getElementById("shop-badge"); badge.hidden=!left; badge.textContent=left;
   if(Store.mode==="loading" || (Store.mode==="db" && !ready.plan && !Store.slow && !Store.err)){
     v.innerHTML=`<div class="card empty"><h2>Opening your kitchen…</h2><p class="muted">Your plan, grocery list and staples will appear here in a moment.</p></div>`; return;
   }
-  v.innerHTML = tab==="week"?viewWeek(): tab==="shop"?viewShop(list): tab==="recipes"?viewRecipes(): viewHome();
+  v.innerHTML = tab==="week"?viewWeek(): tab==="shop"?viewShop(list,boughtCount): tab==="recipes"?viewRecipes(): viewHome();
 }
 
 function viewWeek(){
@@ -718,8 +742,15 @@ function viewWeek(){
   </section>`;
 }
 
-function viewShop(list){
-  const staples=Object.entries(S.staples);
+function viewShop(fullList,boughtCount){
+  if(ui.store!=="all" && !validStore(ui.store)) ui.store="all";
+  const inStore=st=>ui.store==="all"||st===ui.store;
+  const list=fullList.filter(x=>inStore(x.store));
+  const staples=Object.entries(S.staples).filter(([id,s])=>inStore(storeOf(s.name,id)));
+  const left=id=>fullList.filter(x=>!x.done&&(id==="all"||x.store===id)).length;
+  const storeBar=`<div class="filters" role="tablist" aria-label="Store">${[["all","All stores"],...stores().map(s=>[s.id,s.name])].map(([id,n])=>
+    `<button class="${ui.store===id?"on":""}" data-act="store" data-id="${esc(id)}" role="tab" aria-selected="${ui.store===id}">${esc(n)} <span class="num" style="opacity:.7">${left(id)}</span></button>`).join("")}</div>`;
+  const multi=stores().length>1;
   const ask=staples.filter(([id,s])=>!s.every).sort((a,b)=>(b[1].snack-a[1].snack)||a[1].name.localeCompare(b[1].name));
   const every=staples.filter(([id,s])=>s.every);
   const unanswered=ask.filter(([id])=>!S.trip.need[id]&&!S.trip.have[id]).length;
@@ -729,27 +760,30 @@ function viewShop(list){
     : `<section class="card">
       <div class="row between"><div><span class="eyebrow">Check the pantry</span><h2>Need more?</h2></div><span class="chip ${unanswered?"warn":"ok"} num">${unanswered?unanswered+" to check":"All checked"}</span></div>
       <div style="margin-top:6px">${ask.map(([id,s])=>{ const n=S.trip.need[id], h=S.trip.have[id];
-        return `<div class="pantry-row"><div class="grow"><div class="iname">${s.snack?`<span class="star" title="Snack priority">${ICON.starOn.replace('<svg','<svg width="14" height="14"')}</span> `:""}${esc(s.name)}</div><div class="isrc">usually ${fmtQty(s.qty)}${unitLabel(s.unit,s.qty)}</div></div>
+        return `<div class="pantry-row"><div class="grow"><div class="iname">${multi&&ui.store==="all"?`<span class="chip" style="margin-right:4px">${esc(storeName(storeOf(s.name,id)))}</span>`:""}${s.snack?`<span class="star" title="Snack priority">${ICON.starOn.replace('<svg','<svg width="14" height="14"')}</span> `:""}${esc(s.name)}</div><div class="isrc">usually ${fmtQty(s.qty)}${unitLabel(s.unit,s.qty)}</div></div>
         <div class="seg" role="group" aria-label="${esc(s.name)}"><button class="${n?"on-need":""}" data-act="need" data-id="${id}" aria-pressed="${!!n}">Need</button><button class="${h?"on-have":""}" data-act="have" data-id="${id}" aria-pressed="${!!h}">Have</button></div></div>`;}).join("")||'<p class="muted small">Every staple is set to every week.</p>'}</div>
       ${every.length?`<p class="small muted" style="margin:10px 0 0">Added automatically every week: ${every.map(([id,s])=>`<button class="btn ghost small" data-act="skipevery" data-id="${id}" style="min-height:0;padding:2px 6px;${S.trip.have[id]?"text-decoration:line-through;color:var(--muted)":""}">${esc(s.name)}</button>`).join("")}<br>Tap one to skip it this week.</p>`:""}
     </section>`;
   const groups={}; list.forEach(x=>(groups[x.sec]=groups[x.sec]||[]).push(x));
   const row=x=>`<div class="item ${x.done?"done":""}">
       <button class="box" data-act="check" data-k="${esc(x.key)}" aria-label="${x.done?"Uncheck":"Check off"} ${esc(x.name)}" aria-pressed="${x.done}">${x.done?ICON.check:""}</button>
-      <div class="grow"><div class="iname">${x.snack?'<span class="star">★</span> ':""}${esc(x.name)}</div><div class="isrc">${esc([...new Set(x.src)].join(" · "))}${x.extraId?` · <button class="btn ghost small" data-act="keep" data-id="${x.extraId}" style="min-height:0;padding:0 4px">${S.trip.keep[x.extraId]?"★ will remember":"☆ remember as staple"}</button>`:""}</div></div>
+      <div class="grow"><div class="iname">${x.snack?'<span class="star">★</span> ':""}${esc(x.name)}</div><div class="isrc">${multi?storeSelect(`class="storesel" data-act="movestore" data-k="${esc(x.key)}" data-name="${esc(x.name)}" data-staple="${x.stapleId||""}" data-extra="${x.extraId||""}" aria-label="Store for ${esc(x.name)}"`,x.store)+" ":""}${esc([...new Set(x.src)].join(" · "))}${x.extraId?` · <button class="btn ghost small" data-act="keep" data-id="${x.extraId}" style="min-height:0;padding:0 4px">${S.trip.keep[x.extraId]?"★ will remember":"☆ remember as staple"}</button>`:""}</div></div>
       <div class="qty"><button data-act="qty" data-k="${esc(x.key)}" data-d="-1" aria-label="Less ${esc(x.name)}">−</button><span class="q">${fmtQty(x.qty)}${unitLabel(x.unit,x.qty)}</span><button data-act="qty" data-k="${esc(x.key)}" data-d="1" aria-label="More ${esc(x.name)}">+</button></div></div>`;
   const total=list.length, got=list.filter(x=>x.done).length;
   const listHtml = !total ? `<div class="empty"><p class="muted">Your list is empty. Plan the week or mark staples as needed, and items appear here grouped by aisle.</p></div>`
    : SECTION_ORDER.filter(k=>groups[k]).map(k=>{ const g=groups[k].sort((a,b)=>(a.done-b.done)||a.name.localeCompare(b.name)); return `<div class="sect"><h3>${SECTIONS[k]}</h3>${g.map(row).join("")}</div>`; }).join("");
-  return `${pantry}
+  const storeLabel = ui.store==="all" ? "" : storeName(ui.store)+" ";
+  return `${multi?storeBar:""}${pantry}
   <section class="card">
-    <div class="row between wrap"><div><span class="eyebrow">Shopping list</span><h2 class="num">${got} of ${total} in the cart</h2></div>
+    <div class="row between wrap"><div><span class="eyebrow">${ui.store==="all"?"Shopping list":esc(storeName(ui.store))+" list"}</span><h2 class="num">${got} of ${total} in the cart</h2></div>
       <div class="row"><button class="btn" data-act="copy">${ICON.copy} Copy</button>
-      <button class="btn ${ui.armed==="finish"?"confirm":"primary"}" data-act="finish" ${got?"":"disabled"}>${ui.armed==="finish"?"Tap again to save":"Finish trip"}</button></div></div>
+      <button class="btn ${ui.armed==="finish"?"confirm":"primary"}" data-act="finish" ${got?"":"disabled"}>${ui.armed==="finish"?"Tap again to save":"Finish "+esc(storeLabel)+"trip"}</button></div></div>
     <form class="tag-in" data-form="extra" style="margin-top:10px"><input type="text" id="extra-in" placeholder="Add an item, like 2 lb grapes" list="staple-names" autocomplete="off"><button class="btn primary" aria-label="Add item">${ICON.plus}</button></form>
     <datalist id="staple-names">${Object.values(S.staples).map(s=>`<option value="${esc(s.name)}">`).join("")}</datalist>
     ${listHtml}
-    <p class="small muted" style="margin:12px 0 0">Change an amount with − and +. When you finish the trip, staples remember what you actually bought, so next week starts with your real numbers.</p>
+    <p class="small muted" style="margin:12px 0 0">Change an amount with − and +.${multi?" Pick a different store under an item to move it there; it stays at that store from now on.":""} Finishing a trip saves only the checked items${ui.store==="all"?"":" at "+esc(storeName(ui.store))}, and staples remember what you actually bought.</p>
+    <div class="row wrap between" style="margin-top:10px"><span class="small muted">${boughtCount?boughtCount+" item"+(boughtCount>1?"s":"")+" already bought this week.":""}</span>
+      <button class="btn ${ui.armed==="fresh"?"confirm":""}" data-act="fresh">${ui.armed==="fresh"?"Tap again to clear":"Start a fresh list"}</button></div>
   </section>`;
 }
 
@@ -805,6 +839,14 @@ function viewHome(){
     <p class="small muted" style="margin:0">${blocked} recipe${blocked===1?"":"s"} now skipped when planning. Separate several with commas.</p>
   </section>
   <section class="card stack" style="gap:10px">
+    <div><span class="eyebrow">Stores</span><h2>Where we shop</h2></div>
+    <div class="stack" style="gap:8px">${stores().map(x=>`<div class="row"><input type="text" id="store-${esc(x.id)}" value="${esc(x.name)}" data-act="renamestore" data-id="${esc(x.id)}" aria-label="Store name" class="grow">
+      <button class="btn ${ui.armed==="delstore:"+x.id?"confirm":"danger"}" data-act="delstore" data-id="${esc(x.id)}" ${stores().length<2?"disabled":""}>${ui.armed==="delstore:"+x.id?"Tap again":ICON.trash}</button></div>`).join("")}</div>
+    <form class="tag-in" data-form="store"><input type="text" id="store-in" placeholder="Add a store, like Aldi" autocomplete="off"><button class="btn primary">Add</button></form>
+    ${stores().length>1?`<div class="field"><label for="defstore">New items and meal ingredients go to</label>${storeSelect('id="defstore" data-act="defstore"',defaultStore())}</div>`:""}
+    <p class="small muted" style="margin:0">Move any item to another store from the grocery list and it stays there every week after.</p>
+  </section>
+  <section class="card stack" style="gap:10px">
     <div class="row between"><div><span class="eyebrow">Staples</span><h2>Things we always buy</h2></div><span class="chip num">${staples.length}</span></div>
     <p class="small muted" style="margin:0">★ marks a snack priority; those sort to the top of the pantry check. "Every week" items go on the list automatically.</p>
     ${es?`<form class="stack" data-form="staple" style="gap:10px;padding:12px;border:1px solid var(--accent);border-radius:12px">
@@ -812,14 +854,16 @@ function viewHome(){
       <div class="grid2"><div class="field"><label for="st-qty">Usual amount</label><input type="number" id="st-qty" step="0.25" min="0" value="${es.qty}"></div>
       <div class="field"><label for="st-unit">Unit</label><select id="st-unit">${[...new Set(["each","gal","dozen","lb","oz","bag","pkg","box","can","jar","tub","loaf","bunch","head","carton","bottle","roll","cup",es.unit])].map(u=>`<option ${u===es.unit?"selected":""}>${u}</option>`).join("")}</select></div></div>
       <div class="field"><label for="st-sec">Aisle</label><select id="st-sec">${SECTION_ORDER.map(k=>`<option value="${k}" ${k===es.sec?"selected":""}>${SECTIONS[k]}</option>`).join("")}</select></div>
+      ${stores().length?`<div class="field"><label for="st-store">Store</label>${storeSelect('id="st-store"',storeOf(es.name,ed))}</div>`:""}
       <label class="toggle"><span>Every week</span><input type="checkbox" id="st-every" ${es.every?"checked":""}></label>
       <label class="toggle"><span>Snack priority ★</span><input type="checkbox" id="st-snack" ${es.snack?"checked":""}></label>
       ${es.hist&&es.hist.length?`<p class="small muted" style="margin:0">Recent trips: ${es.hist.map(fmtQty).join(", ")} ${esc(es.unit)}</p>`:""}
       <div class="row between"><button type="button" class="btn ${ui.armed==="del:"+ed?"confirm":"danger"}" data-act="delstaple" data-id="${ed}">${ICON.trash} ${ui.armed==="del:"+ed?"Tap again to delete":"Delete"}</button>
       <div class="row"><button type="button" class="btn" data-act="canceledit">Cancel</button><button class="btn primary">Save</button></div></div></form>`:""}
-    <div>${staples.map(([id,s])=>`<div class="staple"><div class="grow"><div class="iname">${s.snack?'<span class="star">★</span> ':""}${esc(s.name)}</div><div class="isrc">${fmtQty(s.qty)}${unitLabel(s.unit,s.qty)} · ${SECTIONS[s.sec]}${s.every?" · every week":""}</div></div>
+    <div>${staples.map(([id,s])=>`<div class="staple"><div class="grow"><div class="iname">${s.snack?'<span class="star">★</span> ':""}${esc(s.name)}</div><div class="isrc">${fmtQty(s.qty)}${unitLabel(s.unit,s.qty)} · ${esc(storeName(storeOf(s.name,id)))} · ${SECTIONS[s.sec]}${s.every?" · every week":""}</div></div>
       <button class="icon-btn" data-act="editstaple" data-id="${id}" aria-label="Edit ${esc(s.name)}">${ICON.edit}</button></div>`).join("")||'<p class="muted small">No staples yet.</p>'}</div>
     <div class="field"><label for="bulk">Paste a list, one item per line</label><textarea id="bulk" placeholder="3 gal milk&#10;5 dozen eggs&#10;2 tub cottage cheese&#10;10 lb russet potatoes"></textarea></div>
+    ${stores().length?`<div class="field"><label for="bulk-store">Buy pasted items at</label>${storeSelect('id="bulk-store"',defaultStore())}</div>`:""}
     <label class="toggle"><span class="small">Mark pasted items as snack priorities ★</span><input type="checkbox" id="bulk-snack"></label>
     <div class="row wrap"><button class="btn primary" data-act="bulk">Add these staples</button>${!staples.length?'<button class="btn" data-act="starter">Use the suggested list</button>':""}</div>
   </section>
@@ -876,7 +920,7 @@ document.addEventListener("click",e=>{
   if(act==="close"){ if(e.target===el || el.tagName==="BUTTON") closeSheet(); return; }
   if(el.tagName==="INPUT"||el.tagName==="SELECT") return;
   const id=el.dataset.id, meal=el.dataset.meal, i=+el.dataset.i;
-  const armedBefore=ui.armed; if(!["finish","delstaple","delrecipe"].includes(act)) ui.armed=null;
+  const armedBefore=ui.armed; if(!["finish","fresh","delstaple","delrecipe","delstore"].includes(act)) ui.armed=null;
   switch(act){
     case "plan": makePlan(false); break;
     case "replan": makePlan(true); toast("Replanned the unlocked days."); break;
@@ -899,13 +943,16 @@ document.addEventListener("click",e=>{
       const stepv = row.unit==="lb"||row.unit==="cup"?0.25: row.unit==="dozen"?0.5:1;
       S.trip.qty[k]=Math.max(0,Math.round((row.qty+stepv*(+el.dataset.d))*100)/100); save.trip(); break; }
     case "keep": { if(S.trip.keep[id]) delete S.trip.keep[id]; else S.trip.keep[id]=1; save.trip(); break; }
-    case "finish": if(armedBefore==="finish"){ ui.armed=null; finishTrip(); } else { ui.armed="finish"; render(); } break;
+    case "finish": if(armedBefore==="finish"){ ui.armed=null; finishTrip(ui.store); } else { ui.armed="finish"; render(); } break;
+    case "fresh": if(armedBefore==="fresh"){ ui.armed=null; S.trip=emptyTrip(); save.trip(); toast("List cleared. It now shows everything for this week's meals and staples."); } else { ui.armed="fresh"; render(); } break;
+    case "store": setStoreView(id); ui.armed=null; render(); break;
+    case "delstore": if(armedBefore==="delstore:"+id){ ui.armed=null; const st=S.settings; st.stores=st.stores.filter(x=>x.id!==id); if(st.defStore===id) st.defStore=st.stores[0]?st.stores[0].id:""; save.settings(); toast("Store removed. Its items moved to "+storeName(defaultStore())+"."); } else { ui.armed="delstore:"+id; render(); } break;
     case "copy": copyList(); break;
-    case "starter": STARTER_STAPLES.forEach(([name,qty,unit,sec,every,snack])=>save.staple(uid(),{name,qty,unit,sec,every:!!every,snack:!!snack,hist:[]})); toast("Added "+STARTER_STAPLES.length+" starter staples. Edit them under Household."); break;
+    case "starter": STARTER_STAPLES.forEach(([name,qty,unit,sec,every,snack,store])=>save.staple(uid(),{name,qty,unit,sec,every:!!every,snack:!!snack,store:validStore(store)||S.settings.defStore,hist:[]})); toast("Added "+STARTER_STAPLES.length+" starter staples. Edit them under Household."); break;
     case "gohome": tab="home"; render(); setTimeout(()=>document.getElementById("bulk")?.focus(),50); break;
     case "bulk": { const ta=document.getElementById("bulk"); const snack=document.getElementById("bulk-snack").checked; const lines=ta.value.split(/\n|,(?![^(]*\))/).map(parseLine).filter(Boolean);
       if(!lines.length){ toast("Type or paste at least one item."); break; }
-      lines.forEach(x=>save.staple(uid(),{...x,every:false,snack,hist:[]})); ta.value=""; toast("Added "+lines.length+" staple"+(lines.length>1?"s":"")+"."); break; }
+      const bs=document.getElementById("bulk-store"); const store=bs?bs.value:defaultStore(); lines.forEach(x=>save.staple(uid(),{...x,store,every:false,snack,hist:[]})); ta.value=""; toast("Added "+lines.length+" staple"+(lines.length>1?"s":"")+"."); break; }
     case "editstaple": ui.editStaple=id; render(); break;
     case "canceledit": ui.editStaple=null; render(); break;
     case "delstaple": if(armedBefore==="del:"+id){ ui.armed=null; ui.editStaple=null; save.staple(id,null); toast("Staple deleted."); } else { ui.armed="del:"+id; render(); } break;
@@ -924,6 +971,13 @@ document.addEventListener("change",e=>{
   if(act==="prep"){ if(el.checked) S.prep[el.dataset.id]=1; else delete S.prep[el.dataset.id]; save.prep(); }
   if(act==="bfast"){ S.settings.breakfasts=el.checked; save.settings(); }
   if(act==="startday"){ S.settings.start=+el.value; save.settings(); }
+  if(act==="movestore"){ const to=el.value, sid=el.dataset.staple, xid=el.dataset.extra;
+    if(sid && S.staples[sid]){ save.staple(sid,{...clone(S.staples[sid]),store:to}); }
+    else { S.settings.itemStore={...(S.settings.itemStore||{}),[norm(el.dataset.name)]:to}; save.settings();
+      if(xid){ S.trip.extras=(S.trip.extras||[]).map(x=>x.id===xid?{...x,store:to}:x); save.trip(); } }
+    toast(el.dataset.name+" moved to "+storeName(to)+"."); }
+  if(act==="defstore"){ S.settings.defStore=el.value; save.settings(); }
+  if(act==="renamestore"){ const v=el.value.trim(); if(v){ S.settings.stores=S.settings.stores.map(x=>x.id===el.dataset.id?{...x,name:v}:x); save.settings(); } else render(); }
 });
 document.addEventListener("input",e=>{ if(e.target.id==="rq"){ ui.q=e.target.value; const pos=e.target.selectionStart; render(); const n=document.getElementById("rq"); n.focus(); n.setSelectionRange(pos,pos); }});
 document.addEventListener("submit",e=>{
@@ -931,13 +985,17 @@ document.addEventListener("submit",e=>{
   if(f==="extra"){ const inp=document.getElementById("extra-in"); const x=parseLine(inp.value); if(!x) return;
     const st=Object.entries(S.staples).find(([id,s])=>norm(s.name)===norm(x.name));
     if(st && !/^\d/.test(inp.value.trim())){ if(st[1].every) delete S.trip.have[st[0]]; else { S.trip.need[st[0]]=1; delete S.trip.have[st[0]]; } save.trip(); toast(st[1].name+" added at the usual amount."); }
-    else { S.trip.extras=[...(S.trip.extras||[]),{id:uid(),...x}]; save.trip(); }
+    else { const ex={id:uid(),...x}; if(validStore(ui.store)) ex.store=ui.store; S.trip.extras=[...(S.trip.extras||[]),ex]; save.trip(); }
     inp.value=""; setTimeout(()=>document.getElementById("extra-in")?.focus(),0); }
+  if(f==="store"){ const inp=document.getElementById("store-in"); const n=inp.value.trim(); if(!n) return;
+    if(stores().some(x=>x.name.toLowerCase()===n.toLowerCase())){ toast(n+" is already on your list."); return; }
+    S.settings.stores=[...stores(),{id:"s"+uid(),name:n}]; if(!validStore(S.settings.defStore)) S.settings.defStore=S.settings.stores[0].id; save.settings(); }
   if(f==="avoid"){ const inp=document.getElementById("avoid-in"); const items=inp.value.split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
     if(items.length){ S.settings.avoid=[...new Set([...(S.settings.avoid||[]),...items])]; save.settings(); } }
   if(f==="staple"){ const id=ui.editStaple; const s=clone(S.staples[id]); if(!s) return;
     s.name=document.getElementById("st-name").value.trim()||s.name; s.qty=parseFloat(document.getElementById("st-qty").value)||s.qty;
     s.unit=document.getElementById("st-unit").value; s.sec=document.getElementById("st-sec").value;
+    const ss=document.getElementById("st-store"); if(ss) s.store=ss.value;
     s.every=document.getElementById("st-every").checked; s.snack=document.getElementById("st-snack").checked;
     ui.editStaple=null; save.staple(id,s); toast("Saved."); }
   if(f==="recipe"){
@@ -953,8 +1011,11 @@ document.addEventListener("submit",e=>{
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeSheet(); });
 
 function copyList(){
-  const {list}=buildList(); const groups={}; list.filter(x=>!x.done).forEach(x=>(groups[x.sec]=groups[x.sec]||[]).push(x));
-  const txt=SECTION_ORDER.filter(k=>groups[k]).map(k=>SECTIONS[k].toUpperCase()+"\n"+groups[k].map(x=>"☐ "+fmtQty(x.qty)+unitLabel(x.unit,x.qty)+" "+x.name).join("\n")).join("\n\n");
+  const {list}=buildList();
+  const ids = ui.store==="all" ? stores().map(s=>s.id) : [ui.store];
+  const block=items=>{ const groups={}; items.forEach(x=>(groups[x.sec]=groups[x.sec]||[]).push(x));
+    return SECTION_ORDER.filter(k=>groups[k]).map(k=>SECTIONS[k].toUpperCase()+"\n"+groups[k].map(x=>"☐ "+fmtQty(x.qty)+unitLabel(x.unit,x.qty)+" "+x.name).join("\n")).join("\n\n"); };
+  const txt=ids.map(id=>{ const items=list.filter(x=>!x.done&&x.store===id); return items.length ? "== "+storeName(id).toUpperCase()+" ==\n"+block(items) : ""; }).filter(Boolean).join("\n\n");
   if(!txt){ toast("Nothing left to buy."); return; }
   const fallback=()=>{ document.getElementById("sheet-root").innerHTML=`<div class="scrim" data-act="close"><div class="sheet"><div class="row between"><h2>Copy this list</h2><button class="icon-btn" data-act="close" aria-label="Close">×</button></div><textarea id="copybox" style="min-height:50vh">${esc(txt)}</textarea></div></div>`; const t=document.getElementById("copybox"); t.focus(); t.select(); };
   try{ navigator.clipboard.writeText(txt).then(()=>toast("List copied. Paste it into Notes or a text."),fallback); }catch(e){ fallback(); }
