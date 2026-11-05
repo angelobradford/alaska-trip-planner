@@ -9,6 +9,6 @@ cd "$(dirname "$0")"
   printf '<meta name="apple-mobile-web-app-title" content="Kitchen"><meta name="apple-mobile-web-app-status-bar-style" content="default">'
   printf '<meta name="theme-color" content="#1f6b4a"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest">'
   printf '<style>[hidden]{display:none!important}body{margin:0}:root{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}</style></head><body>\n'
-  cat app.html
+  sed "s|<title>Bradford Family Kitchen</title>|<title>Family Kitchen</title>|" app.html
   printf '\n</body></html>\n'
 } > index.html

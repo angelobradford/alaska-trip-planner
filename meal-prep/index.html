@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Kitchen"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="theme-color" content="#1f6b4a"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><style>[hidden]{display:none!important}body{margin:0}:root{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}</style></head><body>
-<title>Bradford Family Kitchen</title>
+<title>Family Kitchen</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -361,10 +361,11 @@ const STARTER_STAPLES = [
  ["White rice",1,"bag","G",0,0,"walmart"],["Paper towels",1,"pkg","H",0,0,"costco"]
 ];
 
-const DEF_SETTINGS = {servings:8,start:0,breakfasts:false,maxIng:6,maxActive:30,mix:{potato:4,rice:1,pasta:1,grain:1},avoid:[],fav:[],hidden:[],
+const DEF_SETTINGS = {kitchenName:"",servings:8,start:0,breakfasts:false,maxIng:6,maxActive:30,mix:{potato:4,rice:1,pasta:1,grain:1},avoid:[],fav:[],hidden:[],
   stores:[{id:"walmart",name:"Walmart"},{id:"costco",name:"Costco"}],defStore:"walmart",itemStore:{}};
 
 /* ===================== State ===================== */
+const DEFAULT_TITLE = document.title;
 const S = {settings:clone(DEF_SETTINGS),plan:null,trip:emptyTrip(),staples:{},recipes:{},prep:{}};
 let ready = {settings:false,plan:false,trip:false,staples:false,recipes:false};
 let tab = "week";
@@ -688,7 +689,9 @@ function render(){
   const v=document.getElementById("view");
   const titles={week:"This week",shop:"Grocery list",recipes:"Recipes",home:"Household"};
   document.getElementById("hdr-title").textContent=titles[tab];
-  document.getElementById("hdr-eyebrow").textContent=`Cooking for ${S.settings.servings} · high protein · potato first`;
+  const kn=(S.settings.kitchenName||"").trim();
+  document.title = kn || DEFAULT_TITLE;
+  document.getElementById("hdr-eyebrow").textContent=(kn?kn+" · ":"")+`Cooking for ${S.settings.servings} · high protein · potato first`;
   const {list,boughtCount}=buildList(); const left=list.filter(x=>!x.done).length;
   const badge=document.getElementById("shop-badge"); badge.hidden=!left; badge.textContent=left;
   if(Store.mode==="loading" || (Store.mode==="db" && !ready.plan && !Store.slow && !Store.err)){
@@ -819,6 +822,7 @@ function viewHome(){
   return `
   <section class="card stack" style="gap:10px">
     <div><span class="eyebrow">Family</span><h2>Who we cook for</h2></div>
+    <div class="field"><label for="kitchenname">Name this app</label><input type="text" id="kitchenname" data-act="kitchenname" maxlength="40" placeholder="Smith Family Kitchen" value="${esc(st.kitchenName||"")}"></div>
     <div class="grid2">${stepper("servings",st.servings,"Servings per meal")}
       <div class="field"><label for="startday">Week starts on</label><select id="startday" data-act="startday">${DAYN.map((d,i)=>`<option value="${i}" ${i===st.start?"selected":""}>${d}</option>`).join("")}</select></div></div>
     <p class="small muted" style="margin:0">Recipes are written for 4 and scaled to ${st.servings}. Seven people with growing kids usually lands at 8 so there's a little left for lunch.</p>
@@ -978,6 +982,7 @@ document.addEventListener("change",e=>{
     else { S.settings.itemStore={...(S.settings.itemStore||{}),[norm(el.dataset.name)]:to}; save.settings();
       if(xid){ S.trip.extras=(S.trip.extras||[]).map(x=>x.id===xid?{...x,store:to}:x); save.trip(); } }
     toast(el.dataset.name+" moved to "+storeName(to)+"."); }
+  if(act==="kitchenname"){ S.settings.kitchenName=el.value.trim().slice(0,40); save.settings(); }
   if(act==="defstore"){ S.settings.defStore=el.value; save.settings(); }
   if(act==="renamestore"){ const v=el.value.trim(); if(v){ S.settings.stores=S.settings.stores.map(x=>x.id===el.dataset.id?{...x,name:v}:x); save.settings(); } else render(); }
 });
